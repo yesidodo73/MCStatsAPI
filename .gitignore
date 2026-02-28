@@ -1,0 +1,22 @@
+# Local instructions
+AGENTS.md
+
+# Build outputs
+bin/
+obj/
+
+# Runtime data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# IDE / OS
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.cache
+Thumbs.db
+Desktop.ini

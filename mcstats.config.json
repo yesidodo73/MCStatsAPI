@@ -1,0 +1,9 @@
+{
+  "McStats": {
+    "DatabasePath": "data/mcstats.db",
+    "TimeZoneId": "Asia/Seoul",
+    "BlockedUuids": [
+      "00000000-0000-0000-0000-000000000000"
+    ]
+  }
+}
