@@ -9,12 +9,15 @@ public sealed class StatsService
 {
     private readonly StatsRepository _repository;
     private readonly BucketCalculator _bucketCalculator;
+    private readonly int _maxMetricLength;
 
     public StatsService(StatsRepository repository, IOptionsMonitor<McStatsOptions> options)
     {
         _repository = repository;
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(options.CurrentValue.TimeZoneId);
+        var currentOptions = options.CurrentValue;
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(currentOptions.TimeZoneId);
         _bucketCalculator = new BucketCalculator(tz);
+        _maxMetricLength = Math.Max(8, currentOptions.MaxMetricLength);
     }
 
     public async Task<int> IngestAsync(IReadOnlyList<IngestEventDto> events, CancellationToken ct)
@@ -27,7 +30,17 @@ public sealed class StatsService
                 continue;
             }
 
+            if (item.Metric.Length > _maxMetricLength)
+            {
+                continue;
+            }
+
             var ts = item.TimestampUtc ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            if (ts < 0)
+            {
+                continue;
+            }
+
             prepared.Add(new PreparedEvent(
                 item.Uuid,
                 item.Metric.Trim(),
@@ -51,7 +64,7 @@ public sealed class StatsService
     public async Task<MetricStatDto?> GetMetricStatAsync(Guid uuid, string metric, Period period, CancellationToken ct)
     {
         var normalizedMetric = metric.Trim();
-        if (string.IsNullOrEmpty(normalizedMetric))
+        if (string.IsNullOrEmpty(normalizedMetric) || normalizedMetric.Length > _maxMetricLength)
         {
             return null;
         }

@@ -40,6 +40,22 @@ All runtime settings are managed in `mcstats.config.json`.
 - `GET /v1/config/blocked-uuids`
 - `GET /v1/analytics/overview?days=7|30|90...`
 - `GET /v1/analytics/daily?days=7|30|90...`
+- `POST /v1/telemetry/batch`
+- `GET /v1/telemetry/overview?serverId=paper-main-1&hours=24`
+- `GET /v1/telemetry/series?serverId=paper-main-1&hours=24&resolution=hour|minute`
+- `GET /v1/telemetry/servers`
+
+## Ingest Security
+
+Ingest endpoints require all headers below:
+
+- `X-MCStats-ServerId`
+- `X-MCStats-ApiKey`
+- `X-MCStats-Timestamp`
+- `X-MCStats-Signature` (HMAC-SHA256 hex of `timestamp + "\n" + rawBody`)
+- `X-Idempotency-Key`
+
+Configure allowed clients in `mcstats.config.json` under `McStats.Security.Clients`.
 
 ## Dashboard
 

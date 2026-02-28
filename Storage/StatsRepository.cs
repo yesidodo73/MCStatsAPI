@@ -44,98 +44,8 @@ public sealed class StatsRepository
                              """;
         await pragma.ExecuteNonQueryAsync();
 
-        var command = connection.CreateCommand();
-        command.CommandText = """
-                              CREATE TABLE IF NOT EXISTS metric_catalog (
-                                  metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                  name TEXT NOT NULL UNIQUE
-                              );
-
-                              CREATE TABLE IF NOT EXISTS raw_events (
-                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                  uuid TEXT NOT NULL,
-                                  metric_id INTEGER NOT NULL,
-                                  delta INTEGER NOT NULL,
-                                  event_ts INTEGER NOT NULL,
-                                  created_at INTEGER NOT NULL,
-                                  FOREIGN KEY(metric_id) REFERENCES metric_catalog(metric_id)
-                              );
-
-                              CREATE INDEX IF NOT EXISTS idx_raw_events_uuid_metric_ts
-                                  ON raw_events (uuid, metric_id, event_ts);
-
-                              CREATE TABLE IF NOT EXISTS agg_minutely (
-                                  uuid TEXT NOT NULL,
-                                  metric_id INTEGER NOT NULL,
-                                  bucket_start INTEGER NOT NULL,
-                                  value INTEGER NOT NULL,
-                                  PRIMARY KEY (uuid, metric_id, bucket_start),
-                                  FOREIGN KEY(metric_id) REFERENCES metric_catalog(metric_id)
-                              );
-
-                              CREATE TABLE IF NOT EXISTS agg_hourly (
-                                  uuid TEXT NOT NULL,
-                                  metric_id INTEGER NOT NULL,
-                                  bucket_start INTEGER NOT NULL,
-                                  value INTEGER NOT NULL,
-                                  PRIMARY KEY (uuid, metric_id, bucket_start),
-                                  FOREIGN KEY(metric_id) REFERENCES metric_catalog(metric_id)
-                              );
-
-                              CREATE TABLE IF NOT EXISTS agg_daily (
-                                  uuid TEXT NOT NULL,
-                                  metric_id INTEGER NOT NULL,
-                                  bucket_start INTEGER NOT NULL,
-                                  value INTEGER NOT NULL,
-                                  PRIMARY KEY (uuid, metric_id, bucket_start),
-                                  FOREIGN KEY(metric_id) REFERENCES metric_catalog(metric_id)
-                              );
-
-                              CREATE TABLE IF NOT EXISTS agg_total (
-                                  uuid TEXT NOT NULL,
-                                  metric_id INTEGER NOT NULL,
-                                  value INTEGER NOT NULL,
-                                  PRIMARY KEY (uuid, metric_id),
-                                  FOREIGN KEY(metric_id) REFERENCES metric_catalog(metric_id)
-                              );
-
-                              CREATE TABLE IF NOT EXISTS player_first_seen (
-                                  uuid TEXT PRIMARY KEY,
-                                  first_seen_ts INTEGER NOT NULL,
-                                  first_seen_day_bucket INTEGER NOT NULL
-                              );
-
-                              CREATE TABLE IF NOT EXISTS player_activity_daily (
-                                  uuid TEXT NOT NULL,
-                                  day_bucket INTEGER NOT NULL,
-                                  PRIMARY KEY (uuid, day_bucket)
-                              );
-
-                              CREATE INDEX IF NOT EXISTS idx_player_activity_daily_day
-                                  ON player_activity_daily (day_bucket);
-
-                              CREATE TABLE IF NOT EXISTS player_activity_hourly (
-                                  uuid TEXT NOT NULL,
-                                  hour_bucket INTEGER NOT NULL,
-                                  PRIMARY KEY (uuid, hour_bucket)
-                              );
-
-                              CREATE INDEX IF NOT EXISTS idx_player_activity_hourly_hour
-                                  ON player_activity_hourly (hour_bucket);
-
-                              CREATE TRIGGER IF NOT EXISTS trg_no_update_raw_events
-                              BEFORE UPDATE ON raw_events
-                              BEGIN
-                                  SELECT RAISE(ABORT, 'raw_events is immutable');
-                              END;
-
-                              CREATE TRIGGER IF NOT EXISTS trg_no_delete_raw_events
-                              BEFORE DELETE ON raw_events
-                              BEGIN
-                                  SELECT RAISE(ABORT, 'raw_events is immutable');
-                              END;
-                              """;
-        await command.ExecuteNonQueryAsync();
+        await EnsureSchemaMigrationsTableAsync(connection);
+        await ApplyPendingMigrationsAsync(connection);
     }
 
     public async Task<bool> PingAsync(CancellationToken ct)
@@ -349,6 +259,128 @@ public sealed class StatsRepository
         return result;
     }
 
+    public async Task IngestTelemetryBatchAsync(IReadOnlyList<PreparedTelemetrySample> samples, CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct);
+
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+                              INSERT INTO telemetry_samples (
+                                  server_id, sample_ts, minute_bucket, hour_bucket,
+                                  tps, mspt, cpu_usage_percent, ram_used_mb, ram_total_mb,
+                                  network_rx_kbps, network_tx_kbps, online_players,
+                                  ping_p50_ms, ping_p95_ms, ping_p99_ms
+                              )
+                              VALUES (
+                                  $serverId, $sampleTs, $minuteBucket, $hourBucket,
+                                  $tps, $mspt, $cpuUsagePercent, $ramUsedMb, $ramTotalMb,
+                                  $networkRxKbps, $networkTxKbps, $onlinePlayers,
+                                  $pingP50Ms, $pingP95Ms, $pingP99Ms
+                              );
+                              """;
+        command.Parameters.Add("$serverId", SqliteType.Text);
+        command.Parameters.Add("$sampleTs", SqliteType.Integer);
+        command.Parameters.Add("$minuteBucket", SqliteType.Integer);
+        command.Parameters.Add("$hourBucket", SqliteType.Integer);
+        command.Parameters.Add("$tps", SqliteType.Real);
+        command.Parameters.Add("$mspt", SqliteType.Real);
+        command.Parameters.Add("$cpuUsagePercent", SqliteType.Real);
+        command.Parameters.Add("$ramUsedMb", SqliteType.Real);
+        command.Parameters.Add("$ramTotalMb", SqliteType.Real);
+        command.Parameters.Add("$networkRxKbps", SqliteType.Real);
+        command.Parameters.Add("$networkTxKbps", SqliteType.Real);
+        command.Parameters.Add("$onlinePlayers", SqliteType.Integer);
+        command.Parameters.Add("$pingP50Ms", SqliteType.Real);
+        command.Parameters.Add("$pingP95Ms", SqliteType.Real);
+        command.Parameters.Add("$pingP99Ms", SqliteType.Real);
+
+        foreach (var sample in samples)
+        {
+            command.Parameters["$serverId"].Value = sample.ServerId;
+            command.Parameters["$sampleTs"].Value = sample.SampleTs;
+            command.Parameters["$minuteBucket"].Value = sample.MinuteBucket;
+            command.Parameters["$hourBucket"].Value = sample.HourBucket;
+            command.Parameters["$tps"].Value = DbValueOrNull(sample.Tps);
+            command.Parameters["$mspt"].Value = DbValueOrNull(sample.Mspt);
+            command.Parameters["$cpuUsagePercent"].Value = DbValueOrNull(sample.CpuUsagePercent);
+            command.Parameters["$ramUsedMb"].Value = DbValueOrNull(sample.RamUsedMb);
+            command.Parameters["$ramTotalMb"].Value = DbValueOrNull(sample.RamTotalMb);
+            command.Parameters["$networkRxKbps"].Value = DbValueOrNull(sample.NetworkRxKbps);
+            command.Parameters["$networkTxKbps"].Value = DbValueOrNull(sample.NetworkTxKbps);
+            command.Parameters["$onlinePlayers"].Value = DbValueOrNull(sample.OnlinePlayers);
+            command.Parameters["$pingP50Ms"].Value = DbValueOrNull(sample.PingP50Ms);
+            command.Parameters["$pingP95Ms"].Value = DbValueOrNull(sample.PingP95Ms);
+            command.Parameters["$pingP99Ms"].Value = DbValueOrNull(sample.PingP99Ms);
+            await command.ExecuteNonQueryAsync(ct);
+        }
+
+        await transaction.CommitAsync(ct);
+    }
+
+    public async Task<TelemetryOverviewAggregate> QueryTelemetryOverviewAsync(
+        string serverId,
+        long startTs,
+        long endTs,
+        CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        var command = connection.CreateCommand();
+        command.CommandText = """
+                              SELECT
+                                  COALESCE(AVG(tps), 0),
+                                  COALESCE(AVG(mspt), 0),
+                                  COALESCE(AVG(cpu_usage_percent), 0),
+                                  COALESCE(AVG(ram_used_mb), 0),
+                                  COALESCE(AVG(network_rx_kbps), 0),
+                                  COALESCE(AVG(network_tx_kbps), 0),
+                                  COALESCE(AVG(online_players), 0)
+                              FROM telemetry_samples
+                              WHERE server_id = $serverId
+                                AND sample_ts >= $startTs
+                                AND sample_ts <= $endTs;
+                              """;
+        command.Parameters.AddWithValue("$serverId", serverId);
+        command.Parameters.AddWithValue("$startTs", startTs);
+        command.Parameters.AddWithValue("$endTs", endTs);
+
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+        {
+            return new TelemetryOverviewAggregate(0, 0, 0, 0, 0, 0, 0);
+        }
+
+        return new TelemetryOverviewAggregate(
+            reader.GetDouble(0),
+            reader.GetDouble(1),
+            reader.GetDouble(2),
+            reader.GetDouble(3),
+            reader.GetDouble(4),
+            reader.GetDouble(5),
+            reader.GetDouble(6));
+    }
+
+    public async Task<IReadOnlyList<TelemetryPointDto>> QueryTelemetrySeriesByMinuteAsync(
+        string serverId,
+        long startTs,
+        long endTs,
+        CancellationToken ct)
+    {
+        return await QueryTelemetrySeriesAsync(serverId, startTs, endTs, "minute_bucket", ct);
+    }
+
+    public async Task<IReadOnlyList<TelemetryPointDto>> QueryTelemetrySeriesByHourAsync(
+        string serverId,
+        long startTs,
+        long endTs,
+        CancellationToken ct)
+    {
+        return await QueryTelemetrySeriesAsync(serverId, startTs, endTs, "hour_bucket", ct);
+    }
+
     public async Task<int> QueryActivePlayersCountAsync(
         long startDayBucket,
         long endDayBucket,
@@ -494,6 +526,61 @@ public sealed class StatsRepository
         return result;
     }
 
+    public async Task<bool> TryRegisterIngestIdempotencyKeyAsync(
+        string endpointName,
+        string serverId,
+        string idempotencyKey,
+        long createdAt,
+        long expiresAt,
+        CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var cleanup = connection.CreateCommand();
+        cleanup.CommandText = """
+                              DELETE FROM ingest_idempotency
+                              WHERE expires_at <= $now;
+                              """;
+        cleanup.Parameters.AddWithValue("$now", createdAt);
+        await cleanup.ExecuteNonQueryAsync(ct);
+
+        var insert = connection.CreateCommand();
+        insert.CommandText = """
+                             INSERT INTO ingest_idempotency (endpoint_name, server_id, idempotency_key, created_at, expires_at)
+                             VALUES ($endpointName, $serverId, $idempotencyKey, $createdAt, $expiresAt)
+                             ON CONFLICT(endpoint_name, server_id, idempotency_key) DO NOTHING;
+                             """;
+        insert.Parameters.AddWithValue("$endpointName", endpointName);
+        insert.Parameters.AddWithValue("$serverId", serverId);
+        insert.Parameters.AddWithValue("$idempotencyKey", idempotencyKey);
+        insert.Parameters.AddWithValue("$createdAt", createdAt);
+        insert.Parameters.AddWithValue("$expiresAt", expiresAt);
+        var affected = await insert.ExecuteNonQueryAsync(ct);
+        return affected > 0;
+    }
+
+    public async Task<IReadOnlyList<string>> QueryTelemetryServerIdsAsync(CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        var command = connection.CreateCommand();
+        command.CommandText = """
+                              SELECT DISTINCT server_id
+                              FROM telemetry_samples
+                              ORDER BY server_id ASC;
+                              """;
+
+        var result = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            result.Add(reader.GetString(0));
+        }
+
+        return result;
+    }
+
     private static SqliteCommand BuildAggregateUpsertCommand(SqliteConnection connection, SqliteTransaction transaction, string tableName)
     {
         var command = connection.CreateCommand();
@@ -593,6 +680,259 @@ public sealed class StatsRepository
         return $" AND {uuidColumnName} NOT IN ({string.Join(", ", parameters)})";
     }
 
+    private static async Task EnsureSchemaMigrationsTableAsync(SqliteConnection connection)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText = """
+                              CREATE TABLE IF NOT EXISTS schema_migrations (
+                                  version INTEGER PRIMARY KEY,
+                                  name TEXT NOT NULL,
+                                  applied_at INTEGER NOT NULL
+                              );
+                              """;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task ApplyPendingMigrationsAsync(SqliteConnection connection)
+    {
+        var migrations = GetMigrations();
+        foreach (var migration in migrations)
+        {
+            var existsCommand = connection.CreateCommand();
+            existsCommand.CommandText = """
+                                        SELECT COUNT(*)
+                                        FROM schema_migrations
+                                        WHERE version = $version;
+                                        """;
+            existsCommand.Parameters.AddWithValue("$version", migration.Version);
+            var exists = Convert.ToInt32(await existsCommand.ExecuteScalarAsync()) > 0;
+            if (exists)
+            {
+                continue;
+            }
+
+            await using var tx = (SqliteTransaction)await connection.BeginTransactionAsync();
+
+            var migrateCommand = connection.CreateCommand();
+            migrateCommand.Transaction = tx;
+            migrateCommand.CommandText = migration.Sql;
+            await migrateCommand.ExecuteNonQueryAsync();
+
+            var insertCommand = connection.CreateCommand();
+            insertCommand.Transaction = tx;
+            insertCommand.CommandText = """
+                                        INSERT INTO schema_migrations (version, name, applied_at)
+                                        VALUES ($version, $name, $appliedAt);
+                                        """;
+            insertCommand.Parameters.AddWithValue("$version", migration.Version);
+            insertCommand.Parameters.AddWithValue("$name", migration.Name);
+            insertCommand.Parameters.AddWithValue("$appliedAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            await insertCommand.ExecuteNonQueryAsync();
+
+            await tx.CommitAsync();
+        }
+    }
+
+    private static IReadOnlyList<SchemaMigration> GetMigrations()
+    {
+        return
+        [
+            new SchemaMigration(
+                1,
+                "initial_core",
+                """
+                CREATE TABLE IF NOT EXISTS metric_catalog (
+                    metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE
+                );
+
+                CREATE TABLE IF NOT EXISTS raw_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    uuid TEXT NOT NULL,
+                    metric_id INTEGER NOT NULL,
+                    delta INTEGER NOT NULL,
+                    event_ts INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY(metric_id) REFERENCES metric_catalog(metric_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_raw_events_uuid_metric_ts
+                    ON raw_events (uuid, metric_id, event_ts);
+
+                CREATE TABLE IF NOT EXISTS agg_minutely (
+                    uuid TEXT NOT NULL,
+                    metric_id INTEGER NOT NULL,
+                    bucket_start INTEGER NOT NULL,
+                    value INTEGER NOT NULL,
+                    PRIMARY KEY (uuid, metric_id, bucket_start),
+                    FOREIGN KEY(metric_id) REFERENCES metric_catalog(metric_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS agg_hourly (
+                    uuid TEXT NOT NULL,
+                    metric_id INTEGER NOT NULL,
+                    bucket_start INTEGER NOT NULL,
+                    value INTEGER NOT NULL,
+                    PRIMARY KEY (uuid, metric_id, bucket_start),
+                    FOREIGN KEY(metric_id) REFERENCES metric_catalog(metric_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS agg_daily (
+                    uuid TEXT NOT NULL,
+                    metric_id INTEGER NOT NULL,
+                    bucket_start INTEGER NOT NULL,
+                    value INTEGER NOT NULL,
+                    PRIMARY KEY (uuid, metric_id, bucket_start),
+                    FOREIGN KEY(metric_id) REFERENCES metric_catalog(metric_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS agg_total (
+                    uuid TEXT NOT NULL,
+                    metric_id INTEGER NOT NULL,
+                    value INTEGER NOT NULL,
+                    PRIMARY KEY (uuid, metric_id),
+                    FOREIGN KEY(metric_id) REFERENCES metric_catalog(metric_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS player_first_seen (
+                    uuid TEXT PRIMARY KEY,
+                    first_seen_ts INTEGER NOT NULL,
+                    first_seen_day_bucket INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS player_activity_daily (
+                    uuid TEXT NOT NULL,
+                    day_bucket INTEGER NOT NULL,
+                    PRIMARY KEY (uuid, day_bucket)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_player_activity_daily_day
+                    ON player_activity_daily (day_bucket);
+
+                CREATE TABLE IF NOT EXISTS player_activity_hourly (
+                    uuid TEXT NOT NULL,
+                    hour_bucket INTEGER NOT NULL,
+                    PRIMARY KEY (uuid, hour_bucket)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_player_activity_hourly_hour
+                    ON player_activity_hourly (hour_bucket);
+
+                CREATE TRIGGER IF NOT EXISTS trg_no_update_raw_events
+                BEFORE UPDATE ON raw_events
+                BEGIN
+                    SELECT RAISE(ABORT, 'raw_events is immutable');
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_no_delete_raw_events
+                BEFORE DELETE ON raw_events
+                BEGIN
+                    SELECT RAISE(ABORT, 'raw_events is immutable');
+                END;
+                """
+            ),
+            new SchemaMigration(
+                2,
+                "telemetry_and_idempotency",
+                """
+                CREATE TABLE IF NOT EXISTS telemetry_samples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    server_id TEXT NOT NULL,
+                    sample_ts INTEGER NOT NULL,
+                    minute_bucket INTEGER NOT NULL,
+                    hour_bucket INTEGER NOT NULL,
+                    tps REAL NULL,
+                    mspt REAL NULL,
+                    cpu_usage_percent REAL NULL,
+                    ram_used_mb REAL NULL,
+                    ram_total_mb REAL NULL,
+                    network_rx_kbps REAL NULL,
+                    network_tx_kbps REAL NULL,
+                    online_players INTEGER NULL,
+                    ping_p50_ms REAL NULL,
+                    ping_p95_ms REAL NULL,
+                    ping_p99_ms REAL NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_telemetry_server_sample_ts
+                    ON telemetry_samples (server_id, sample_ts);
+
+                CREATE INDEX IF NOT EXISTS idx_telemetry_server_minute
+                    ON telemetry_samples (server_id, minute_bucket);
+
+                CREATE INDEX IF NOT EXISTS idx_telemetry_server_hour
+                    ON telemetry_samples (server_id, hour_bucket);
+
+                CREATE TABLE IF NOT EXISTS ingest_idempotency (
+                    endpoint_name TEXT NOT NULL,
+                    server_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    PRIMARY KEY (endpoint_name, server_id, idempotency_key)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_ingest_idempotency_expires
+                    ON ingest_idempotency (expires_at);
+                """
+            )
+        ];
+    }
+
+    private async Task<IReadOnlyList<TelemetryPointDto>> QueryTelemetrySeriesAsync(
+        string serverId,
+        long startTs,
+        long endTs,
+        string bucketColumn,
+        CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        var command = connection.CreateCommand();
+        command.CommandText = $"""
+                               SELECT
+                                   {bucketColumn},
+                                   COALESCE(AVG(tps), 0),
+                                   COALESCE(AVG(mspt), 0),
+                                   COALESCE(AVG(cpu_usage_percent), 0),
+                                   COALESCE(AVG(ram_used_mb), 0),
+                                   COALESCE(AVG(network_rx_kbps), 0),
+                                   COALESCE(AVG(network_tx_kbps), 0),
+                                   COALESCE(AVG(online_players), 0)
+                               FROM telemetry_samples
+                               WHERE server_id = $serverId
+                                 AND sample_ts >= $startTs
+                                 AND sample_ts <= $endTs
+                               GROUP BY {bucketColumn}
+                               ORDER BY {bucketColumn} ASC;
+                               """;
+        command.Parameters.AddWithValue("$serverId", serverId);
+        command.Parameters.AddWithValue("$startTs", startTs);
+        command.Parameters.AddWithValue("$endTs", endTs);
+
+        var points = new List<TelemetryPointDto>();
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            points.Add(new TelemetryPointDto(
+                reader.GetInt64(0),
+                reader.GetDouble(1),
+                reader.GetDouble(2),
+                reader.GetDouble(3),
+                reader.GetDouble(4),
+                reader.GetDouble(5),
+                reader.GetDouble(6),
+                reader.GetDouble(7)));
+        }
+
+        return points;
+    }
+
+    private static object DbValueOrNull(object? value)
+    {
+        return value ?? DBNull.Value;
+    }
+
     private static (string Table, string BucketColumn) ResolveTable(Period period)
     {
         return period switch
@@ -605,3 +945,15 @@ public sealed class StatsRepository
         };
     }
 }
+
+public sealed record TelemetryOverviewAggregate(
+    double AvgTps,
+    double AvgMspt,
+    double AvgCpuUsagePercent,
+    double AvgRamUsedMb,
+    double AvgNetworkRxKbps,
+    double AvgNetworkTxKbps,
+    double AvgOnlinePlayers
+);
+
+public sealed record SchemaMigration(int Version, string Name, string Sql);

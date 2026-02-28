@@ -2,8 +2,21 @@
   "McStats": {
     "DatabasePath": "data/mcstats.db",
     "TimeZoneId": "Asia/Seoul",
+    "MaxEventBatchSize": 500,
+    "MaxTelemetryBatchSize": 300,
+    "MaxMetricLength": 64,
+    "MaxClockSkewSeconds": 300,
     "BlockedUuids": [
       "00000000-0000-0000-0000-000000000000"
-    ]
+    ],
+    "Security": {
+      "Clients": [
+        {
+          "ServerId": "paper-main-1",
+          "ApiKey": "replace-with-strong-api-key",
+          "Secret": "replace-with-strong-hmac-secret"
+        }
+      ]
+    }
   }
 }

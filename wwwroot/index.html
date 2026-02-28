@@ -3,199 +3,126 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>mcstats Analytics Dashboard</title>
+  <title>MCStats Control Dashboard</title>
   <style>
     :root {
-      --bg: #f6f1e8;
+      --bg: #f4efe4;
       --panel: #fffdf8;
-      --ink: #1f2d2a;
-      --muted: #556b66;
-      --accent: #1b7a5b;
+      --ink: #1e2d29;
+      --muted: #5b6d67;
+      --accent: #1a7d5e;
+      --warn: #b85600;
       --danger: #a33535;
-      --line: #d8d0c1;
-      --card-shadow: 0 10px 30px rgba(23, 29, 27, 0.08);
+      --line: #dccfb8;
+      --shadow: 0 14px 28px rgba(26, 45, 40, 0.1);
     }
-
     * { box-sizing: border-box; }
     body {
       margin: 0;
+      font-family: "Segoe UI", "Noto Sans", sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at 10% -20%, rgba(27,122,91,0.2), transparent 30%),
-        radial-gradient(circle at 100% 0, rgba(255,167,38,0.16), transparent 25%),
+        radial-gradient(circle at 12% -18%, rgba(24, 126, 93, .16), transparent 28%),
+        radial-gradient(circle at 100% 0, rgba(239, 143, 0, .12), transparent 24%),
         var(--bg);
-      font-family: "Segoe UI", "Noto Sans", sans-serif;
     }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 28px 20px 40px;
-    }
-
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      gap: 16px;
-      margin-bottom: 20px;
-    }
-
-    .title {
-      font-size: clamp(24px, 3.5vw, 44px);
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      margin: 0;
-    }
-
-    .subtitle {
-      margin: 6px 0 0;
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    .controls {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
-
+    .container { max-width: 1320px; margin: 0 auto; padding: 26px 20px 40px; }
+    .header { display: flex; justify-content: space-between; gap: 14px; align-items: flex-end; margin-bottom: 18px; }
+    .title { margin: 0; font-size: clamp(26px, 3vw, 42px); letter-spacing: -.03em; font-weight: 800; }
+    .subtitle { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     select, button {
       border: 1px solid var(--line);
       border-radius: 10px;
-      padding: 10px 12px;
-      font-size: 14px;
       background: var(--panel);
       color: var(--ink);
+      padding: 10px 12px;
+      font-size: 14px;
     }
-
     button {
       cursor: pointer;
       background: var(--accent);
       border-color: var(--accent);
-      color: #f1fff8;
-      font-weight: 600;
+      color: #f1fff9;
+      font-weight: 700;
     }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(12, minmax(0, 1fr));
-      gap: 14px;
-    }
-
+    .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; }
     .card {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 14px;
-      box-shadow: var(--card-shadow);
+      box-shadow: var(--shadow);
       padding: 14px;
     }
-
-    .kpi { grid-column: span 4; }
-    .trend { grid-column: span 12; }
+    .kpi { grid-column: span 3; }
+    .alerts { grid-column: span 12; }
+    .trend { grid-column: span 7; }
+    .telemetry { grid-column: span 5; }
     .hourly { grid-column: span 12; }
-
-    @media (max-width: 900px) {
+    @media (max-width: 1100px) {
+      .kpi { grid-column: span 6; }
+      .trend, .telemetry { grid-column: span 12; }
+    }
+    @media (max-width: 700px) {
       .kpi { grid-column: span 12; }
     }
-
-    .kpi-label {
-      color: var(--muted);
-      font-size: 13px;
-      margin-bottom: 8px;
-    }
-
-    .kpi-value {
-      font-size: 28px;
-      font-weight: 800;
-      line-height: 1.2;
-    }
-
+    .kpi-label { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+    .kpi-value { font-size: 28px; font-weight: 800; line-height: 1.15; }
     .trend-pill {
       margin-top: 8px;
-      font-size: 13px;
-      font-weight: 700;
       display: inline-block;
-      padding: 4px 8px;
       border-radius: 999px;
-      background: #eef6f3;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 8px;
+      background: #ecf7f2;
       color: var(--accent);
     }
-
-    .trend-pill.down {
-      background: #fbeeee;
-      color: var(--danger);
-    }
-
-    .section-title {
-      margin: 0 0 10px;
-      font-size: 15px;
-      font-weight: 700;
-    }
-
-    .chart-wrap {
-      width: 100%;
-      overflow-x: auto;
-    }
-
-    svg { display: block; width: 100%; height: auto; }
-
-    .legend {
-      display: flex;
-      gap: 12px;
-      font-size: 13px;
-      color: var(--muted);
-      margin-bottom: 10px;
-    }
-
-    .dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 99px;
-      display: inline-block;
-      margin-right: 6px;
-    }
-
+    .trend-pill.down { background: #faecec; color: var(--danger); }
+    .section-title { margin: 0 0 10px; font-size: 15px; font-weight: 750; }
+    .chart-wrap { width: 100%; overflow-x: auto; }
+    svg { width: 100%; height: auto; display: block; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .dot { width: 9px; height: 9px; border-radius: 99px; display: inline-block; margin-right: 6px; }
     .dot.active { background: #1b7a5b; }
     .dot.new { background: #ef8f00; }
+    .dot.tps { background: #1b7a5b; }
+    .dot.mspt { background: #c75400; }
+    .dot.spike { background: #a33535; }
     .bar-grid {
       display: grid;
       grid-template-columns: repeat(24, 1fr);
       gap: 4px;
+      min-height: 160px;
       align-items: end;
-      min-height: 170px;
-      margin-top: 6px;
     }
-
-    .bar {
-      background: linear-gradient(180deg, #2a8f6d 0%, #1b7a5b 100%);
-      border-radius: 4px 4px 0 0;
-      min-height: 2px;
-    }
-
-    .hour-labels {
-      margin-top: 8px;
-      display: grid;
-      grid-template-columns: repeat(8, 1fr);
-      gap: 4px;
-      font-size: 12px;
-      color: var(--muted);
-    }
+    .bar { background: linear-gradient(180deg, #2f8f6d 0%, #1b7a5b 100%); border-radius: 4px 4px 0 0; min-height: 2px; }
+    .alerts-list { margin: 0; padding-left: 18px; }
+    .alerts-list li { margin: 4px 0; color: var(--warn); font-weight: 600; }
+    .alerts-list li.critical { color: var(--danger); }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
       <div>
-        <h1 class="title">MCStats Pro Analytics</h1>
+        <h1 class="title">MCStats Operations Dashboard</h1>
         <p class="subtitle" id="windowLabel">Loading...</p>
       </div>
       <div class="controls">
-        <label for="days">Range</label>
+        <label for="server">Server</label>
+        <select id="server"></select>
+        <label for="days">Player Window</label>
         <select id="days">
-          <option value="7">Last 7 days</option>
-          <option value="30" selected>Last 30 days</option>
-          <option value="90">Last 90 days</option>
+          <option value="7">7d</option>
+          <option value="30" selected>30d</option>
+          <option value="90">90d</option>
+        </select>
+        <label for="hours">Telemetry</label>
+        <select id="hours">
+          <option value="6">6h</option>
+          <option value="24" selected>24h</option>
+          <option value="72">72h</option>
         </select>
         <button id="refreshBtn" type="button">Refresh</button>
       </div>
@@ -207,46 +134,66 @@
         <div class="kpi-value" id="newPlayers">-</div>
         <span class="trend-pill" id="newTrend">-</span>
       </section>
-
       <section class="card kpi">
         <div class="kpi-label">Active Players</div>
         <div class="kpi-value" id="activePlayers">-</div>
         <span class="trend-pill" id="activeTrend">-</span>
       </section>
-
       <section class="card kpi">
-        <div class="kpi-label">Average Daily Active Players</div>
+        <div class="kpi-label">Avg Daily Active</div>
         <div class="kpi-value" id="avgPlayers">-</div>
         <span class="trend-pill" id="avgTrend">-</span>
       </section>
+      <section class="card kpi">
+        <div class="kpi-label">Server Perf (Avg)</div>
+        <div class="kpi-value" id="serverPerf">-</div>
+        <span class="trend-pill" id="serverPerfSub">-</span>
+      </section>
+
+      <section class="card alerts">
+        <h2 class="section-title">Operational Alerts</h2>
+        <ul class="alerts-list" id="alertsList">
+          <li>No alerts.</li>
+        </ul>
+      </section>
 
       <section class="card trend">
-        <h2 class="section-title">Daily Trend</h2>
+        <h2 class="section-title">Daily Player Trend</h2>
         <div class="legend">
           <span><span class="dot active"></span>Active Players</span>
           <span><span class="dot new"></span>New Players</span>
         </div>
         <div class="chart-wrap">
-          <svg id="trendChart" viewBox="0 0 1000 280" preserveAspectRatio="none"></svg>
+          <svg id="playerTrendChart" viewBox="0 0 1000 280" preserveAspectRatio="none"></svg>
+        </div>
+      </section>
+
+      <section class="card telemetry">
+        <h2 class="section-title">Telemetry Trend (Spike Marker)</h2>
+        <div class="legend">
+          <span><span class="dot tps"></span>TPS</span>
+          <span><span class="dot mspt"></span>MSPT</span>
+          <span><span class="dot spike"></span>Spike (MSPT > 50 or TPS < 18)</span>
+        </div>
+        <div class="chart-wrap">
+          <svg id="telemetryChart" viewBox="0 0 1000 280" preserveAspectRatio="none"></svg>
         </div>
       </section>
 
       <section class="card hourly">
         <h2 class="section-title">Hourly Average Players (Local Time)</h2>
         <div class="bar-grid" id="hourlyBars"></div>
-        <div class="hour-labels">
-          <span>00:00</span><span>03:00</span><span>06:00</span><span>09:00</span>
-          <span>12:00</span><span>15:00</span><span>18:00</span><span>21:00</span>
-        </div>
       </section>
     </div>
   </div>
 
   <script>
+    const serverSelect = document.getElementById("server");
     const daysSelect = document.getElementById("days");
+    const hoursSelect = document.getElementById("hours");
     const refreshBtn = document.getElementById("refreshBtn");
     const windowLabel = document.getElementById("windowLabel");
-
+    const alertsList = document.getElementById("alertsList");
     const fmt = new Intl.NumberFormat();
 
     function setTrend(el, trend) {
@@ -259,24 +206,11 @@
       }
     }
 
-    function drawTrend(svg, points) {
-      svg.innerHTML = "";
-      const w = 1000;
-      const h = 280;
-      const pad = 28;
-      if (!points.length) {
-        return;
-      }
+    function createPath(points, selector, x, y) {
+      return points.map((p, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(p[selector])}`).join(" ");
+    }
 
-      const maxValue = Math.max(
-        1,
-        ...points.map(p => p.activePlayers),
-        ...points.map(p => p.newPlayers)
-      );
-
-      const x = i => pad + (i * (w - pad * 2) / Math.max(1, points.length - 1));
-      const y = v => h - pad - ((v / maxValue) * (h - pad * 2));
-
+    function drawGrid(svg, w, h, pad) {
       for (let i = 0; i < 5; i++) {
         const yy = pad + (i * (h - pad * 2) / 4);
         const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -288,69 +222,159 @@
         line.setAttribute("stroke-width", "1");
         svg.appendChild(line);
       }
+    }
 
-      const makePath = (selector, color) => {
-        const d = points.map((p, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(p[selector])}`).join(" ");
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", d);
-        path.setAttribute("fill", "none");
-        path.setAttribute("stroke", color);
-        path.setAttribute("stroke-width", "3");
-        path.setAttribute("stroke-linecap", "round");
-        path.setAttribute("stroke-linejoin", "round");
-        svg.appendChild(path);
-      };
+    function drawLine(svg, d, color, width = 3) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", color);
+      path.setAttribute("stroke-width", String(width));
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+      svg.appendChild(path);
+    }
 
-      makePath("activePlayers", "#1b7a5b");
-      makePath("newPlayers", "#ef8f00");
+    function drawPlayerTrend(points) {
+      const svg = document.getElementById("playerTrendChart");
+      svg.innerHTML = "";
+      if (!points.length) return;
+      const w = 1000, h = 280, pad = 28;
+      drawGrid(svg, w, h, pad);
+      const max = Math.max(1, ...points.map(p => p.activePlayers), ...points.map(p => p.newPlayers));
+      const x = i => pad + (i * (w - pad * 2) / Math.max(1, points.length - 1));
+      const y = v => h - pad - ((v / max) * (h - pad * 2));
+      drawLine(svg, createPath(points, "activePlayers", x, y), "#1b7a5b");
+      drawLine(svg, createPath(points, "newPlayers", x, y), "#ef8f00");
+    }
+
+    function drawTelemetryTrend(points) {
+      const svg = document.getElementById("telemetryChart");
+      svg.innerHTML = "";
+      if (!points.length) return;
+      const w = 1000, h = 280, pad = 28;
+      drawGrid(svg, w, h, pad);
+      const max = Math.max(1, ...points.map(p => p.avgMspt), ...points.map(p => p.avgTps));
+      const x = i => pad + (i * (w - pad * 2) / Math.max(1, points.length - 1));
+      const y = v => h - pad - ((v / max) * (h - pad * 2));
+      drawLine(svg, createPath(points, "avgTps", x, y), "#1b7a5b");
+      drawLine(svg, createPath(points, "avgMspt", x, y), "#c75400");
+
+      points.forEach((p, i) => {
+        if (p.avgMspt <= 50 && p.avgTps >= 18) return;
+        const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        marker.setAttribute("cx", String(x(i)));
+        marker.setAttribute("cy", String(y(Math.max(p.avgMspt, p.avgTps))));
+        marker.setAttribute("r", "4");
+        marker.setAttribute("fill", "#a33535");
+        svg.appendChild(marker);
+      });
     }
 
     function drawHourlyBars(hourly) {
       const wrap = document.getElementById("hourlyBars");
       wrap.innerHTML = "";
       const byHour = new Array(24).fill(0);
-      for (const item of hourly) {
-        byHour[item.hour] = item.averagePlayers;
-      }
+      for (const item of hourly) byHour[item.hour] = item.averagePlayers;
       const max = Math.max(1, ...byHour);
       byHour.forEach(v => {
         const bar = document.createElement("div");
         bar.className = "bar";
-        bar.style.height = `${Math.max(2, (v / max) * 160)}px`;
+        bar.style.height = `${Math.max(2, (v / max) * 150)}px`;
         bar.title = `${v.toFixed(2)} players`;
         wrap.appendChild(bar);
       });
     }
 
-    async function load() {
+    function renderAlerts(telemetryOverview) {
+      const alerts = [];
+      if (telemetryOverview.avgTps < 18) alerts.push({ text: `Average TPS is low (${telemetryOverview.avgTps.toFixed(2)}).`, critical: true });
+      if (telemetryOverview.avgMspt > 50) alerts.push({ text: `Average MSPT is high (${telemetryOverview.avgMspt.toFixed(2)} ms).`, critical: true });
+      if (telemetryOverview.avgCpuUsagePercent > 85) alerts.push({ text: `CPU usage is high (${telemetryOverview.avgCpuUsagePercent.toFixed(1)}%).`, critical: true });
+      if (telemetryOverview.avgOnlinePlayers === 0) alerts.push({ text: "No online player traffic in selected telemetry window.", critical: false });
+
+      alertsList.innerHTML = "";
+      if (!alerts.length) {
+        alertsList.innerHTML = "<li>No alerts.</li>";
+        return;
+      }
+
+      for (const alert of alerts) {
+        const li = document.createElement("li");
+        if (alert.critical) li.className = "critical";
+        li.textContent = alert.text;
+        alertsList.appendChild(li);
+      }
+    }
+
+    async function loadServers() {
+      const res = await fetch("/v1/telemetry/servers");
+      if (!res.ok) throw new Error("Failed to load servers");
+      const data = await res.json();
+      const servers = data.servers || [];
+      serverSelect.innerHTML = "";
+      for (const serverId of servers) {
+        const opt = document.createElement("option");
+        opt.value = serverId;
+        opt.textContent = serverId;
+        serverSelect.appendChild(opt);
+      }
+      if (!servers.length) {
+        const opt = document.createElement("option");
+        opt.value = "paper-main-1";
+        opt.textContent = "paper-main-1 (no telemetry yet)";
+        serverSelect.appendChild(opt);
+      }
+    }
+
+    async function loadDashboard() {
       const days = Number(daysSelect.value);
-      const [overviewRes, dailyRes] = await Promise.all([
+      const hours = Number(hoursSelect.value);
+      const serverId = serverSelect.value;
+
+      const [overviewRes, dailyRes, telemetryOverviewRes, telemetrySeriesRes] = await Promise.all([
         fetch(`/v1/analytics/overview?days=${days}`),
-        fetch(`/v1/analytics/daily?days=${days}`)
+        fetch(`/v1/analytics/daily?days=${days}`),
+        fetch(`/v1/telemetry/overview?serverId=${encodeURIComponent(serverId)}&hours=${hours}`),
+        fetch(`/v1/telemetry/series?serverId=${encodeURIComponent(serverId)}&hours=${hours}&resolution=hour`)
       ]);
-      if (!overviewRes.ok || !dailyRes.ok) {
-        throw new Error("Failed to load analytics.");
+
+      if (!overviewRes.ok || !dailyRes.ok || !telemetryOverviewRes.ok || !telemetrySeriesRes.ok) {
+        throw new Error("Failed to load dashboard data.");
       }
 
       const overview = await overviewRes.json();
       const daily = await dailyRes.json();
+      const telemetryOverview = await telemetryOverviewRes.json();
+      const telemetrySeries = await telemetrySeriesRes.json();
 
-      windowLabel.textContent = `${overview.windowStartDate} - ${overview.windowEndDate}`;
+      windowLabel.textContent = `${overview.windowStartDate} - ${overview.windowEndDate} | ${serverId} (${hours}h telemetry)`;
       document.getElementById("newPlayers").textContent = fmt.format(overview.newPlayers);
       document.getElementById("activePlayers").textContent = fmt.format(overview.activePlayers);
       document.getElementById("avgPlayers").textContent = overview.averageDailyActivePlayers.toFixed(2);
-
       setTrend(document.getElementById("newTrend"), overview.newPlayersTrend);
       setTrend(document.getElementById("activeTrend"), overview.activePlayersTrend);
       setTrend(document.getElementById("avgTrend"), overview.averageDailyActivePlayersTrend);
 
-      drawTrend(document.getElementById("trendChart"), daily.points);
+      document.getElementById("serverPerf").textContent = `${telemetryOverview.avgTps.toFixed(2)} TPS`;
+      document.getElementById("serverPerfSub").textContent = `${telemetryOverview.avgMspt.toFixed(2)} MSPT`;
+
+      drawPlayerTrend(daily.points);
       drawHourlyBars(overview.hourlyAveragePlayers);
+      drawTelemetryTrend(telemetrySeries.points);
+      renderAlerts(telemetryOverview);
     }
 
-    refreshBtn.addEventListener("click", () => { load().catch(console.error); });
-    daysSelect.addEventListener("change", () => { load().catch(console.error); });
-    load().catch(console.error);
+    async function boot() {
+      await loadServers();
+      await loadDashboard();
+    }
+
+    refreshBtn.addEventListener("click", () => loadDashboard().catch(console.error));
+    daysSelect.addEventListener("change", () => loadDashboard().catch(console.error));
+    hoursSelect.addEventListener("change", () => loadDashboard().catch(console.error));
+    serverSelect.addEventListener("change", () => loadDashboard().catch(console.error));
+    boot().catch(console.error);
   </script>
 </body>
 </html>
