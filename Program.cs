@@ -17,8 +17,12 @@ builder.Services
 builder.Services.AddSingleton<BlockedUuidProvider>();
 builder.Services.AddSingleton<StatsRepository>();
 builder.Services.AddSingleton<StatsService>();
+builder.Services.AddSingleton<AnalyticsService>();
 
 var app = builder.Build();
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 using (var scope = app.Services.CreateScope())
 {
@@ -96,6 +100,38 @@ app.MapGet("/v1/stats/{uuid:guid}", async (
 app.MapGet("/v1/config/blocked-uuids", (BlockedUuidProvider blockedUuidProvider) =>
 {
     return Results.Ok(new { blocked = blockedUuidProvider.All().Select(x => x.ToString()) });
+});
+
+app.MapGet("/v1/analytics/overview", async (
+    int? days,
+    AnalyticsService analyticsService,
+    BlockedUuidProvider blockedUuidProvider,
+    CancellationToken ct) =>
+{
+    var requestedDays = days ?? 30;
+    if (requestedDays is < 1 or > 365)
+    {
+        return Results.BadRequest(new { error = "days must be between 1 and 365" });
+    }
+
+    var result = await analyticsService.GetOverviewAsync(requestedDays, blockedUuidProvider.All(), ct);
+    return Results.Ok(result);
+});
+
+app.MapGet("/v1/analytics/daily", async (
+    int? days,
+    AnalyticsService analyticsService,
+    BlockedUuidProvider blockedUuidProvider,
+    CancellationToken ct) =>
+{
+    var requestedDays = days ?? 30;
+    if (requestedDays is < 1 or > 365)
+    {
+        return Results.BadRequest(new { error = "days must be between 1 and 365" });
+    }
+
+    var result = await analyticsService.GetDailyAnalyticsAsync(requestedDays, blockedUuidProvider.All(), ct);
+    return Results.Ok(result);
 });
 
 app.Run();

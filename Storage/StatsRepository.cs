@@ -349,6 +349,151 @@ public sealed class StatsRepository
         return result;
     }
 
+    public async Task<int> QueryActivePlayersCountAsync(
+        long startDayBucket,
+        long endDayBucket,
+        IReadOnlyCollection<Guid> blockedUuids,
+        CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        var command = connection.CreateCommand();
+        command.CommandText = """
+                              SELECT COUNT(DISTINCT uuid)
+                              FROM player_activity_daily
+                              WHERE day_bucket >= $startDayBucket
+                                AND day_bucket <= $endDayBucket
+                              """;
+        command.Parameters.AddWithValue("$startDayBucket", startDayBucket);
+        command.Parameters.AddWithValue("$endDayBucket", endDayBucket);
+        command.CommandText += BuildBlockedExclusionClause(command, blockedUuids, "uuid");
+
+        var result = await command.ExecuteScalarAsync(ct);
+        return Convert.ToInt32(result);
+    }
+
+    public async Task<int> QueryNewPlayersCountAsync(
+        long startDayBucket,
+        long endDayBucket,
+        IReadOnlyCollection<Guid> blockedUuids,
+        CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        var command = connection.CreateCommand();
+        command.CommandText = """
+                              SELECT COUNT(*)
+                              FROM player_first_seen
+                              WHERE first_seen_day_bucket >= $startDayBucket
+                                AND first_seen_day_bucket <= $endDayBucket
+                              """;
+        command.Parameters.AddWithValue("$startDayBucket", startDayBucket);
+        command.Parameters.AddWithValue("$endDayBucket", endDayBucket);
+        command.CommandText += BuildBlockedExclusionClause(command, blockedUuids, "uuid");
+
+        var result = await command.ExecuteScalarAsync(ct);
+        return Convert.ToInt32(result);
+    }
+
+    public async Task<IReadOnlyDictionary<long, int>> QueryDailyActivePlayersAsync(
+        long startDayBucket,
+        long endDayBucket,
+        IReadOnlyCollection<Guid> blockedUuids,
+        CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        var command = connection.CreateCommand();
+        command.CommandText = """
+                              SELECT day_bucket, COUNT(*) AS player_count
+                              FROM player_activity_daily
+                              WHERE day_bucket >= $startDayBucket
+                                AND day_bucket <= $endDayBucket
+                              """;
+        command.Parameters.AddWithValue("$startDayBucket", startDayBucket);
+        command.Parameters.AddWithValue("$endDayBucket", endDayBucket);
+        command.CommandText += BuildBlockedExclusionClause(command, blockedUuids, "uuid");
+        command.CommandText += """
+
+                               GROUP BY day_bucket;
+                               """;
+
+        var result = new Dictionary<long, int>();
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            result[reader.GetInt64(0)] = reader.GetInt32(1);
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyDictionary<long, int>> QueryDailyNewPlayersAsync(
+        long startDayBucket,
+        long endDayBucket,
+        IReadOnlyCollection<Guid> blockedUuids,
+        CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        var command = connection.CreateCommand();
+        command.CommandText = """
+                              SELECT first_seen_day_bucket, COUNT(*) AS player_count
+                              FROM player_first_seen
+                              WHERE first_seen_day_bucket >= $startDayBucket
+                                AND first_seen_day_bucket <= $endDayBucket
+                              """;
+        command.Parameters.AddWithValue("$startDayBucket", startDayBucket);
+        command.Parameters.AddWithValue("$endDayBucket", endDayBucket);
+        command.CommandText += BuildBlockedExclusionClause(command, blockedUuids, "uuid");
+        command.CommandText += """
+
+                               GROUP BY first_seen_day_bucket;
+                               """;
+
+        var result = new Dictionary<long, int>();
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            result[reader.GetInt64(0)] = reader.GetInt32(1);
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyDictionary<long, int>> QueryHourlyActivePlayersAsync(
+        long startHourBucket,
+        long endHourBucket,
+        IReadOnlyCollection<Guid> blockedUuids,
+        CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        var command = connection.CreateCommand();
+        command.CommandText = """
+                              SELECT hour_bucket, COUNT(*) AS player_count
+                              FROM player_activity_hourly
+                              WHERE hour_bucket >= $startHourBucket
+                                AND hour_bucket <= $endHourBucket
+                              """;
+        command.Parameters.AddWithValue("$startHourBucket", startHourBucket);
+        command.Parameters.AddWithValue("$endHourBucket", endHourBucket);
+        command.CommandText += BuildBlockedExclusionClause(command, blockedUuids, "uuid");
+        command.CommandText += """
+
+                               GROUP BY hour_bucket;
+                               """;
+
+        var result = new Dictionary<long, int>();
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            result[reader.GetInt64(0)] = reader.GetInt32(1);
+        }
+
+        return result;
+    }
+
     private static SqliteCommand BuildAggregateUpsertCommand(SqliteConnection connection, SqliteTransaction transaction, string tableName)
     {
         var command = connection.CreateCommand();
@@ -424,6 +569,28 @@ public sealed class StatsRepository
         }
 
         return metricId;
+    }
+
+    private static string BuildBlockedExclusionClause(
+        SqliteCommand command,
+        IReadOnlyCollection<Guid> blockedUuids,
+        string uuidColumnName)
+    {
+        if (blockedUuids.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var parameters = new List<string>(blockedUuids.Count);
+        var i = 0;
+        foreach (var blocked in blockedUuids)
+        {
+            var name = $"$blocked{i++}";
+            command.Parameters.AddWithValue(name, blocked.ToString());
+            parameters.Add(name);
+        }
+
+        return $" AND {uuidColumnName} NOT IN ({string.Join(", ", parameters)})";
     }
 
     private static (string Table, string BucketColumn) ResolveTable(Period period)

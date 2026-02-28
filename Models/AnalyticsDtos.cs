@@ -1,9 +1,9 @@
 namespace McStats.Api.Models;
 
 public sealed record TrendMetricDto(
-    long Current,
-    long Previous,
-    long Delta,
+    double Current,
+    double Previous,
+    double Delta,
     double ChangePercent,
     string Direction
 );

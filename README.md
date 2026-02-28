@@ -38,6 +38,18 @@ All runtime settings are managed in `mcstats.config.json`.
 - `GET /v1/stats/{uuid}/{metric}?period=last1h|today|last7d|last30d|total`
 - `GET /v1/stats/{uuid}?period=last1h|today|last7d|last30d|total`
 - `GET /v1/config/blocked-uuids`
+- `GET /v1/analytics/overview?days=7|30|90...`
+- `GET /v1/analytics/daily?days=7|30|90...`
+
+## Dashboard
+
+- Open `/` to access the built-in analytics dashboard.
+- Includes:
+  - New players
+  - Active players
+  - Average daily active players
+  - Hourly average players
+  - Growth/decline trends against the previous same-length period
 
 ### Batch Ingest Request Example
 
