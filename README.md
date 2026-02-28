@@ -45,6 +45,15 @@ All runtime settings are managed in `mcstats.config.json`.
 - `GET /v1/telemetry/series?serverId=paper-main-1&hours=24&resolution=hour|minute`
 - `GET /v1/telemetry/servers`
 
+Telemetry includes:
+- TPS, MSPT
+- CPU, RAM
+- network Rx/Tx
+- disk read/write (collector-dependent)
+- GC collections per minute
+- thread count
+- online players and ping percentiles
+
 ## Ingest Security
 
 Ingest endpoints require all headers below:

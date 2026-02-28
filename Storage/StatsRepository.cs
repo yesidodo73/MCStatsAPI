@@ -271,13 +271,17 @@ public sealed class StatsRepository
                               INSERT INTO telemetry_samples (
                                   server_id, sample_ts, minute_bucket, hour_bucket,
                                   tps, mspt, cpu_usage_percent, ram_used_mb, ram_total_mb,
-                                  network_rx_kbps, network_tx_kbps, online_players,
+                                  network_rx_kbps, network_tx_kbps,
+                                  disk_read_kbps, disk_write_kbps, gc_collections_per_minute, thread_count,
+                                  online_players,
                                   ping_p50_ms, ping_p95_ms, ping_p99_ms
                               )
                               VALUES (
                                   $serverId, $sampleTs, $minuteBucket, $hourBucket,
                                   $tps, $mspt, $cpuUsagePercent, $ramUsedMb, $ramTotalMb,
-                                  $networkRxKbps, $networkTxKbps, $onlinePlayers,
+                                  $networkRxKbps, $networkTxKbps,
+                                  $diskReadKbps, $diskWriteKbps, $gcCollectionsPerMinute, $threadCount,
+                                  $onlinePlayers,
                                   $pingP50Ms, $pingP95Ms, $pingP99Ms
                               );
                               """;
@@ -292,6 +296,10 @@ public sealed class StatsRepository
         command.Parameters.Add("$ramTotalMb", SqliteType.Real);
         command.Parameters.Add("$networkRxKbps", SqliteType.Real);
         command.Parameters.Add("$networkTxKbps", SqliteType.Real);
+        command.Parameters.Add("$diskReadKbps", SqliteType.Real);
+        command.Parameters.Add("$diskWriteKbps", SqliteType.Real);
+        command.Parameters.Add("$gcCollectionsPerMinute", SqliteType.Real);
+        command.Parameters.Add("$threadCount", SqliteType.Integer);
         command.Parameters.Add("$onlinePlayers", SqliteType.Integer);
         command.Parameters.Add("$pingP50Ms", SqliteType.Real);
         command.Parameters.Add("$pingP95Ms", SqliteType.Real);
@@ -310,6 +318,10 @@ public sealed class StatsRepository
             command.Parameters["$ramTotalMb"].Value = DbValueOrNull(sample.RamTotalMb);
             command.Parameters["$networkRxKbps"].Value = DbValueOrNull(sample.NetworkRxKbps);
             command.Parameters["$networkTxKbps"].Value = DbValueOrNull(sample.NetworkTxKbps);
+            command.Parameters["$diskReadKbps"].Value = DbValueOrNull(sample.DiskReadKbps);
+            command.Parameters["$diskWriteKbps"].Value = DbValueOrNull(sample.DiskWriteKbps);
+            command.Parameters["$gcCollectionsPerMinute"].Value = DbValueOrNull(sample.GcCollectionsPerMinute);
+            command.Parameters["$threadCount"].Value = DbValueOrNull(sample.ThreadCount);
             command.Parameters["$onlinePlayers"].Value = DbValueOrNull(sample.OnlinePlayers);
             command.Parameters["$pingP50Ms"].Value = DbValueOrNull(sample.PingP50Ms);
             command.Parameters["$pingP95Ms"].Value = DbValueOrNull(sample.PingP95Ms);
@@ -337,6 +349,10 @@ public sealed class StatsRepository
                                   COALESCE(AVG(ram_used_mb), 0),
                                   COALESCE(AVG(network_rx_kbps), 0),
                                   COALESCE(AVG(network_tx_kbps), 0),
+                                  COALESCE(AVG(disk_read_kbps), 0),
+                                  COALESCE(AVG(disk_write_kbps), 0),
+                                  COALESCE(AVG(gc_collections_per_minute), 0),
+                                  COALESCE(AVG(thread_count), 0),
                                   COALESCE(AVG(online_players), 0)
                               FROM telemetry_samples
                               WHERE server_id = $serverId
@@ -350,7 +366,7 @@ public sealed class StatsRepository
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct))
         {
-            return new TelemetryOverviewAggregate(0, 0, 0, 0, 0, 0, 0);
+            return new TelemetryOverviewAggregate(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
 
         return new TelemetryOverviewAggregate(
@@ -360,7 +376,11 @@ public sealed class StatsRepository
             reader.GetDouble(3),
             reader.GetDouble(4),
             reader.GetDouble(5),
-            reader.GetDouble(6));
+            reader.GetDouble(6),
+            reader.GetDouble(7),
+            reader.GetDouble(8),
+            reader.GetDouble(9),
+            reader.GetDouble(10));
     }
 
     public async Task<IReadOnlyList<TelemetryPointDto>> QueryTelemetrySeriesByMinuteAsync(
@@ -875,6 +895,16 @@ public sealed class StatsRepository
                 CREATE INDEX IF NOT EXISTS idx_ingest_idempotency_expires
                     ON ingest_idempotency (expires_at);
                 """
+            ),
+            new SchemaMigration(
+                3,
+                "telemetry_extended_metrics",
+                """
+                ALTER TABLE telemetry_samples ADD COLUMN IF NOT EXISTS disk_read_kbps REAL NULL;
+                ALTER TABLE telemetry_samples ADD COLUMN IF NOT EXISTS disk_write_kbps REAL NULL;
+                ALTER TABLE telemetry_samples ADD COLUMN IF NOT EXISTS gc_collections_per_minute REAL NULL;
+                ALTER TABLE telemetry_samples ADD COLUMN IF NOT EXISTS thread_count INTEGER NULL;
+                """
             )
         ];
     }
@@ -898,6 +928,10 @@ public sealed class StatsRepository
                                    COALESCE(AVG(ram_used_mb), 0),
                                    COALESCE(AVG(network_rx_kbps), 0),
                                    COALESCE(AVG(network_tx_kbps), 0),
+                                   COALESCE(AVG(disk_read_kbps), 0),
+                                   COALESCE(AVG(disk_write_kbps), 0),
+                                   COALESCE(AVG(gc_collections_per_minute), 0),
+                                   COALESCE(AVG(thread_count), 0),
                                    COALESCE(AVG(online_players), 0)
                                FROM telemetry_samples
                                WHERE server_id = $serverId
@@ -922,7 +956,11 @@ public sealed class StatsRepository
                 reader.GetDouble(4),
                 reader.GetDouble(5),
                 reader.GetDouble(6),
-                reader.GetDouble(7)));
+                reader.GetDouble(7),
+                reader.GetDouble(8),
+                reader.GetDouble(9),
+                reader.GetDouble(10),
+                reader.GetDouble(11)));
         }
 
         return points;
@@ -953,6 +991,10 @@ public sealed record TelemetryOverviewAggregate(
     double AvgRamUsedMb,
     double AvgNetworkRxKbps,
     double AvgNetworkTxKbps,
+    double AvgDiskReadKbps,
+    double AvgDiskWriteKbps,
+    double AvgGcCollectionsPerMinute,
+    double AvgThreadCount,
     double AvgOnlinePlayers
 );
 

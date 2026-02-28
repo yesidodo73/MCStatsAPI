@@ -10,6 +10,10 @@ public sealed record TelemetrySampleDto(
     double? RamTotalMb,
     double? NetworkRxKbps,
     double? NetworkTxKbps,
+    double? DiskReadKbps,
+    double? DiskWriteKbps,
+    double? GcCollectionsPerMinute,
+    int? ThreadCount,
     int? OnlinePlayers,
     double? PingP50Ms,
     double? PingP95Ms,
@@ -31,6 +35,10 @@ public sealed record TelemetryOverviewDto(
     double AvgRamUsedMb,
     double AvgNetworkRxKbps,
     double AvgNetworkTxKbps,
+    double AvgDiskReadKbps,
+    double AvgDiskWriteKbps,
+    double AvgGcCollectionsPerMinute,
+    double AvgThreadCount,
     double AvgOnlinePlayers
 );
 
@@ -42,6 +50,10 @@ public sealed record TelemetryPointDto(
     double AvgRamUsedMb,
     double AvgNetworkRxKbps,
     double AvgNetworkTxKbps,
+    double AvgDiskReadKbps,
+    double AvgDiskWriteKbps,
+    double AvgGcCollectionsPerMinute,
+    double AvgThreadCount,
     double AvgOnlinePlayers
 );
 

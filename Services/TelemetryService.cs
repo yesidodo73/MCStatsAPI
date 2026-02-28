@@ -47,6 +47,10 @@ public sealed class TelemetryService
                 sample.RamTotalMb,
                 sample.NetworkRxKbps,
                 sample.NetworkTxKbps,
+                sample.DiskReadKbps,
+                sample.DiskWriteKbps,
+                sample.GcCollectionsPerMinute,
+                sample.ThreadCount,
                 sample.OnlinePlayers,
                 sample.PingP50Ms,
                 sample.PingP95Ms,
@@ -79,6 +83,10 @@ public sealed class TelemetryService
             aggregated.AvgRamUsedMb,
             aggregated.AvgNetworkRxKbps,
             aggregated.AvgNetworkTxKbps,
+            aggregated.AvgDiskReadKbps,
+            aggregated.AvgDiskWriteKbps,
+            aggregated.AvgGcCollectionsPerMinute,
+            aggregated.AvgThreadCount,
             aggregated.AvgOnlinePlayers
         );
     }
@@ -116,6 +124,10 @@ public sealed record PreparedTelemetrySample(
     double? RamTotalMb,
     double? NetworkRxKbps,
     double? NetworkTxKbps,
+    double? DiskReadKbps,
+    double? DiskWriteKbps,
+    double? GcCollectionsPerMinute,
+    int? ThreadCount,
     int? OnlinePlayers,
     double? PingP50Ms,
     double? PingP95Ms,
